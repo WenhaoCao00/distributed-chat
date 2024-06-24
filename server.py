@@ -34,6 +34,7 @@ class Server:
         self.discovery.start()
         print("Service discovery started.")
         threading.Thread(target=self.heartbeat, daemon=True).start()
+        threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()  # 新增心跳监听线程
         threading.Thread(target=self.check_heartbeat, daemon=True).start()
         threading.Thread(target=self.listen_for_clients, daemon=True).start()
         print("Server started and listening for clients.")
@@ -79,6 +80,16 @@ class Server:
                     sock.sendto(message, (server_ip, 50000))
             time.sleep(5)
 
+    def listen_for_heartbeats(self):  # 新增心跳监听方法
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((self.local_ip, 50000))
+        while self.server_running:
+            data, addr = sock.recvfrom(1024)
+            message = json.loads(data.decode())
+            if message['type'] == 'heartbeat':
+                self.last_heartbeat[addr[0]] = time.time()
+                print(f"Received heartbeat from {addr[0]}")
+
     def check_heartbeat(self):
         while self.server_running:
             current_time = time.time()
@@ -87,6 +98,8 @@ class Server:
                     print(f"Server {server_ip} is down, initiating election.")
                     # Commenting out election logic for testing purposes
                     # self.start_election()
+                    # 打印检测到服务器宕机的信息
+                    print(f"Detected server failure: {server_ip}")
                     break
             time.sleep(5)
 
