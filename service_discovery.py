@@ -63,7 +63,11 @@ class ServiceDiscovery:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((self.local_ip, 0))
         while True:
-            message = json.dumps({'type': 'heartbeat', 'ip': self.local_ip}).encode()
+            message = json.dumps({
+                'type': 'heartbeat',
+                'ip': self.local_ip,
+                'leader': self.leader_ip
+            }).encode()
             for server_ip in list(self.server_addresses):  # 使用集合的副本进行遍历
                 if server_ip != self.local_ip:
                     print(f"Sending heartbeat to {server_ip}")
@@ -81,7 +85,8 @@ class ServiceDiscovery:
                     message = json.loads(data.decode())
                     if message['type'] == 'heartbeat':
                         self.last_heartbeat[addr[0]] = time.time()
-                        print(f"Received heartbeat from {addr[0]}")
+                        self.leader_ip = message['leader']
+                        print(f"Received heartbeat from {addr[0]} with leader {self.leader_ip}")
                 except json.JSONDecodeError:
                     pass
 
@@ -105,6 +110,18 @@ class ServiceDiscovery:
         else:
             self.is_leader = False
             print(f"New leader is {self.leader_ip}")
+        self.notify_new_leader()
+
+    def notify_new_leader(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        message = json.dumps({
+            'type': 'new_leader',
+            'leader': self.leader_ip
+        }).encode()
+        for server_ip in self.server_addresses:
+            if server_ip != self.local_ip:
+                sock.sendto(message, (server_ip, self.heartbeat_port))
+                print(f"Notified {server_ip} of new leader {self.leader_ip}")
 
     def get_leader(self):
         return self.leader_ip
