@@ -78,7 +78,7 @@ class ServiceDiscovery:
             }).encode()
             for server_ip in list(self.server_addresses):  # 使用集合的副本进行遍历
                 if server_ip != self.local_ip:
-                    print(f"Sending heartbeat to {server_ip}")
+                    #print(f"Sending heartbeat to {server_ip}")
                     sock.sendto(message, (server_ip, self.heartbeat_port))
             time.sleep(self.heartbeat_interval)
 
