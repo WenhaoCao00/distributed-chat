@@ -59,6 +59,8 @@ class ServiceDiscovery:
 
     def heartbeat(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((self.local_ip, 0))
         while True:
             message = json.dumps({'type': 'heartbeat', 'ip': self.local_ip}).encode()
             for server_ip in list(self.server_addresses):  # 使用集合的副本进行遍历
@@ -69,7 +71,8 @@ class ServiceDiscovery:
 
     def listen_for_heartbeats(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((self.local_ip, self.port))
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('', self.port))
         while True:
             data, addr = sock.recvfrom(1024)
             if data:
@@ -107,3 +110,11 @@ class ServiceDiscovery:
 
     def get_servers(self):
         return list(self.server_addresses)
+
+# 示例用法：
+if __name__ == '__main__':
+    discovery = ServiceDiscovery()
+    discovery.start()
+    time.sleep(10)  # 等待一些时间以发现服务器
+    print("Discovered servers:", discovery.get_servers())
+    print("Leader:", discovery.get_leader())
