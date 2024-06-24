@@ -14,6 +14,7 @@ class ServiceDiscovery:
         self.last_heartbeat = {}
         self.is_leader = False
         self.leader_ip = None
+        self.heartbeat_running = False  # 控制心跳线程的运行
 
     def is_valid_ip(self, ip):
         return ip.startswith("192.168.") and ip != "127.0.0.1"  # 返回局域网IP并排除本地回环地址
@@ -32,7 +33,6 @@ class ServiceDiscovery:
     def start(self):
         threading.Thread(target=self.send_broadcast, daemon=True).start()
         threading.Thread(target=self.listen_for_broadcast, daemon=True).start()
-        threading.Thread(target=self.heartbeat, daemon=True).start()
         threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
         threading.Thread(target=self.check_heartbeat, daemon=True).start()
 
@@ -58,11 +58,19 @@ class ServiceDiscovery:
                 if not self.leader_ip:
                     self.start_election()
 
+    def start_heartbeat(self):
+        if not self.heartbeat_running:
+            self.heartbeat_running = True
+            threading.Thread(target=self.heartbeat, daemon=True).start()
+
+    def stop_heartbeat(self):
+        self.heartbeat_running = False
+
     def heartbeat(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((self.local_ip, 0))
-        while True:
+        while self.heartbeat_running:
             message = json.dumps({
                 'type': 'heartbeat',
                 'ip': self.local_ip,
@@ -86,7 +94,16 @@ class ServiceDiscovery:
                     if message['type'] == 'heartbeat':
                         self.last_heartbeat[addr[0]] = time.time()
                         self.leader_ip = message['leader']
+                        if self.leader_ip != self.local_ip:
+                            self.is_leader = False
+                            self.stop_heartbeat()
                         print(f"Received heartbeat from {addr[0]} with leader {self.leader_ip}")
+                    elif message['type'] == 'new_leader':
+                        self.leader_ip = message['leader']
+                        self.is_leader = (self.leader_ip == self.local_ip)
+                        if not self.is_leader:
+                            self.stop_heartbeat()
+                        print(f"Received new leader notification: {self.leader_ip}")
                 except json.JSONDecodeError:
                     pass
 
@@ -106,9 +123,11 @@ class ServiceDiscovery:
         self.leader_ip = min(self.server_addresses.union({self.local_ip}))
         if self.leader_ip == self.local_ip:
             self.is_leader = True
+            self.start_heartbeat()
             print(f"I am the leader: {self.local_ip}")
         else:
             self.is_leader = False
+            self.stop_heartbeat()
             print(f"New leader is {self.leader_ip}")
         self.notify_new_leader()
 
