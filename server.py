@@ -6,7 +6,7 @@ from service_discovery import ServiceDiscovery
 class Server:
     def __init__(self, port=10000):
         self.port = port
-        self.discovery = ServiceDiscovery(port=50000)
+        self.discovery = ServiceDiscovery()
         self.clients = {}
         self.server_running = True
 

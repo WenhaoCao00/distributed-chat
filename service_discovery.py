@@ -4,8 +4,9 @@ import time
 import json
 
 class ServiceDiscovery:
-    def __init__(self, port=50000, heartbeat_interval=5, heartbeat_timeout=10):
-        self.port = port
+    def __init__(self, broadcast_port=50000, heartbeat_port=50001, heartbeat_interval=5, heartbeat_timeout=10):
+        self.broadcast_port = broadcast_port
+        self.heartbeat_port = heartbeat_port
         self.heartbeat_interval = heartbeat_interval
         self.heartbeat_timeout = heartbeat_timeout
         self.server_addresses = set()
@@ -41,13 +42,13 @@ class ServiceDiscovery:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind((self.local_ip, 0))
         while True:
-            sock.sendto(message, ('<broadcast>', self.port))
+            sock.sendto(message, ('<broadcast>', self.broadcast_port))
             time.sleep(5)
 
     def listen_for_broadcast(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(('', self.port))
+        sock.bind(('', self.broadcast_port))
         while True:
             data, addr = sock.recvfrom(1024)
             if data == b'SERVICE_DISCOVERY' and self.is_valid_ip(addr[0]):
@@ -66,13 +67,13 @@ class ServiceDiscovery:
             for server_ip in list(self.server_addresses):  # 使用集合的副本进行遍历
                 if server_ip != self.local_ip:
                     print(f"Sending heartbeat to {server_ip}")
-                    sock.sendto(message, (server_ip, self.port))
+                    sock.sendto(message, (server_ip, self.heartbeat_port))
             time.sleep(self.heartbeat_interval)
 
     def listen_for_heartbeats(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(('', self.port))
+        sock.bind(('', self.heartbeat_port))
         while True:
             data, addr = sock.recvfrom(1024)
             if data:
