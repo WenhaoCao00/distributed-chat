@@ -84,6 +84,7 @@ class ServiceDiscovery:
     def heartbeat(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)  # 启用广播
         sock.bind((self.local_ip, 0))
         while self.heartbeat_running:
             message = json.dumps({
@@ -91,21 +92,23 @@ class ServiceDiscovery:
                 'ip': self.local_ip,
                 'leader': self.leader_ip
             }).encode()
-            for server_ip in list(self.server_addresses):  # 使用集合的副本进行遍历
-                if server_ip != self.local_ip:
-                    #print(f"Sending heartbeat to {server_ip}")
-                    sock.sendto(message, (server_ip, self.heartbeat_port))
+            # 广播心跳消息给整个子网
+            sock.sendto(message, ('<broadcast>', self.heartbeat_port))
             time.sleep(self.heartbeat_interval)
 
+
     def listen_for_heartbeats(self):
+        print("Starting to listen for heartbeats...")
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(('', self.heartbeat_port))
+        
         while True:
             data, addr = sock.recvfrom(1024)
             if data:
                 try:
                     message = json.loads(data.decode())
+                    #print(f"Received data: {message}")
                     if message['type'] == 'heartbeat':
                         self.last_heartbeat[addr[0]] = time.time()
                         self.leader_ip = message['leader']
@@ -114,16 +117,16 @@ class ServiceDiscovery:
                             if self.leader_ip != self.local_ip:
                                 self.is_leader = False
                                 self.stop_heartbeat()
-                            print(f"Received heartbeat from {addr[0]} with leader {self.leader_ip}")
+                            #print(f"Received heartbeat from {addr[0]} with leader {self.leader_ip}")
                         elif self.role == 'client':
-                            print(f"Client received heartbeat from {addr[0]} with leader {self.leader_ip}")
+                            #print(f"Client received heartbeat from {addr[0]} with leader {self.leader_ip}")
                             self.leader_ip = message['leader']
                     elif message['type'] == 'new_leader':
                         self.leader_ip = message['leader']
                         self.is_leader = (self.leader_ip == self.local_ip)
                         if self.role == 'server' and not self.is_leader:
                             self.stop_heartbeat()
-                        print(f"Received new leader notification: {self.leader_ip}")
+                        #print(f"Received new leader notification: {self.leader_ip}")
                         if self.role == 'client':
                             self.leader_ip = message['leader']
                             
@@ -160,7 +163,7 @@ class ServiceDiscovery:
             'type': 'new_leader',
             'leader': self.leader_ip
         }).encode()
-        for server_ip in self.server_addresses:
+        for server_ip in list(self.server_addresses):
             if server_ip != self.local_ip:
                 sock.sendto(message, (server_ip, self.heartbeat_port))
                 print(f"Notified {server_ip} of new leader {self.leader_ip}")
