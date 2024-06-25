@@ -41,7 +41,8 @@ class Server:
                     break
                 message = data.decode()
                 print(f"{client_address}: {message}")
-                # 这里可以添加处理消息的逻辑，例如转发给其他客户端
+                
+                # Forward message to all other clients
                 self.forward_message(client_address, message)
 
         except Exception as e:
