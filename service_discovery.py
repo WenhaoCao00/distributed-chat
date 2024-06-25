@@ -40,8 +40,7 @@ class ServiceDiscovery:
             threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
             threading.Thread(target=self.check_heartbeat, daemon=True).start()
         elif self.role == 'client':
-            threading.Thread(target=self.send_broadcast, daemon=True).start()
-            threading.Thread(target=self.listen_for_broadcast, daemon=True).start()
+            threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
 
     def send_broadcast(self):
         message = f'SERVICE_DISCOVERY:{self.role}'.encode()
@@ -68,6 +67,9 @@ class ServiceDiscovery:
                         print(f"Discovered server: {addr[0]}")
                     if not self.leader_ip:
                         self.start_election()
+
+                # elif msg_type == 'SERVICE_DISCOVERY' and role == 'client' and self.is_valid_ip(addr[0]):
+                #这里写的是client的逻辑，但是client的逻辑应该在client.py中实现
             except Exception as e:
                 print(f"Error decoding broadcast message: {e}")
 
@@ -107,16 +109,24 @@ class ServiceDiscovery:
                     if message['type'] == 'heartbeat':
                         self.last_heartbeat[addr[0]] = time.time()
                         self.leader_ip = message['leader']
-                        if self.leader_ip != self.local_ip:
-                            self.is_leader = False
-                            self.stop_heartbeat()
-                        print(f"Received heartbeat from {addr[0]} with leader {self.leader_ip}")
+
+                        if self.role == 'server':
+                            if self.leader_ip != self.local_ip:
+                                self.is_leader = False
+                                self.stop_heartbeat()
+                            print(f"Received heartbeat from {addr[0]} with leader {self.leader_ip}")
+                        elif self.role == 'client':
+                            print(f"Client received heartbeat from {addr[0]} with leader {self.leader_ip}")
+                            self.leader_ip = message['leader']
                     elif message['type'] == 'new_leader':
                         self.leader_ip = message['leader']
                         self.is_leader = (self.leader_ip == self.local_ip)
-                        if not self.is_leader:
+                        if self.role == 'server' and not self.is_leader:
                             self.stop_heartbeat()
                         print(f"Received new leader notification: {self.leader_ip}")
+                        if self.role == 'client':
+                            self.leader_ip = message['leader']
+                            
                 except json.JSONDecodeError:
                     pass
 
