@@ -1,7 +1,9 @@
 import socket
 import threading
 import time
+import json
 from service_discovery import ServiceDiscovery
+from lamport_clock import LamportClock
 
 class Server:
     def __init__(self, port=10000):
@@ -9,6 +11,8 @@ class Server:
         self.discovery = ServiceDiscovery(role='server')
         self.clients = {}
         self.server_running = True
+        self.clock = LamportClock()
+        self.message_queue = []
 
     def start(self):
         print("Starting service discovery...")
@@ -39,11 +43,16 @@ class Server:
                 data = client_socket.recv(1024)
                 if not data:
                     break
-                message = data.decode()
-                print(f"{client_address}: {message}")
+                message = json.loads(data.decode())
+                self.clock.receive_event(message['timestamp'])
+                print(f"{client_address}: {message['content']}")
+                
                 
                 # Forward message to all other clients
-                self.forward_message(client_address, message)
+                self.message_queue.append((client_address, message))
+                self.process_message_queue()
+
+                
 
         except Exception as e:
             print(f"Error handling client {client_address}: {e}")
@@ -52,11 +61,23 @@ class Server:
             del self.clients[client_address]
             print(f"Client disconnected: {client_address}")
 
+
+    def process_message_queue(self):
+        while self.message_queue:
+            sender_address, message = self.message_queue.pop(0)
+            self.forward_message(sender_address, message)
+
     def forward_message(self, sender_address, message):
         for client_address, client_socket in self.clients.items():
             if client_address != sender_address:
                 try:
-                    client_socket.sendall(f"{sender_address}: {message}".encode())
+                    self.clock.send_event()
+                    forward_message = {
+                        'sender': sender_address,
+                        'content': message['content'],
+                        'timestamp': self.clock.get_time()
+                    }
+                    client_socket.sendall(json.dumps(forward_message).encode())
                 except Exception as e:
                     print(f"Error forwarding message to {client_address}: {e}")
 

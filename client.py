@@ -1,7 +1,9 @@
 import socket
 import threading
 import time
+import json
 from service_discovery import ServiceDiscovery
+from lamport_clock import LamportClock
 
 class ChatClient:
 
@@ -11,7 +13,7 @@ class ChatClient:
         self.client_socket = None
         self.leader_ip = None
         self.is_connected = False
-
+        self.clock = LamportClock()
 
     def connect_to_leader(self):
         while not self.is_connected:
@@ -32,11 +34,17 @@ class ChatClient:
     def send_messages(self):
         while self.is_connected:
             try:
-                message = input("Enter message: ")
-                if message.lower() == "exit":
+                message_content = input("Me: ")
+                if message_content.lower() == "exit":
                     self.is_connected = False
                     break
-                self.client_socket.sendall(message.encode())
+                timestamp = self.clock.send_event()
+                message = {
+                    'sender': 'client_id',
+                    'content': message_content,
+                    'timestamp': timestamp
+                }
+                self.client_socket.sendall(json.dumps(message).encode())
             except Exception as e:
                 print(f"Send message error: {e}")
                 self.is_connected = False
@@ -47,7 +55,10 @@ class ChatClient:
             try:
                 data = self.client_socket.recv(1024).decode()
                 if data:
-                    self.print_message(data)
+                    message = json.loads(data)
+                    self.clock.receive_event(message['timestamp'])
+                    self.print_message(f"{message['sender']}:{message['content']}")
+                   
             except Exception as e:
                 print(f"Receive message error: {e}")
                 self.is_connected = False
@@ -55,7 +66,7 @@ class ChatClient:
     def print_message(self, message):
         print(f"\r{' ' * 80}\r", end='', flush=True)
         print(f"{message}")
-        print("Enter message: ", end='', flush=True)
+        print("Me: ", end='', flush=True)
 
     def handle_leader_change(self):
         while True:
