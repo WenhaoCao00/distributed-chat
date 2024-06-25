@@ -4,7 +4,8 @@ import time
 import json
 
 class ServiceDiscovery:
-    def __init__(self, broadcast_port=50000, heartbeat_port=50001, heartbeat_interval=5, heartbeat_timeout=10):
+    def __init__(self, role, broadcast_port=50000, heartbeat_port=50001, heartbeat_interval=5, heartbeat_timeout=10):
+        self.role = role
         self.broadcast_port = broadcast_port
         self.heartbeat_port = heartbeat_port
         self.heartbeat_interval = heartbeat_interval
@@ -15,6 +16,7 @@ class ServiceDiscovery:
         self.is_leader = False
         self.leader_ip = None
         self.heartbeat_running = False  # 控制心跳线程的运行
+        
 
     def is_valid_ip(self, ip):
         return ip.startswith("192.168.") and ip != "127.0.0.1"  # 返回局域网IP并排除本地回环地址
@@ -31,13 +33,18 @@ class ServiceDiscovery:
         return ip
 
     def start(self):
-        threading.Thread(target=self.send_broadcast, daemon=True).start()
-        threading.Thread(target=self.listen_for_broadcast, daemon=True).start()
-        threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
-        threading.Thread(target=self.check_heartbeat, daemon=True).start()
+
+        if self.role == 'server':
+            threading.Thread(target=self.send_broadcast, daemon=True).start()
+            threading.Thread(target=self.listen_for_broadcast, daemon=True).start()
+            threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
+            threading.Thread(target=self.check_heartbeat, daemon=True).start()
+        elif self.role == 'client':
+            threading.Thread(target=self.send_broadcast, daemon=True).start()
+            threading.Thread(target=self.listen_for_broadcast, daemon=True).start()
 
     def send_broadcast(self):
-        message = b'SERVICE_DISCOVERY'
+        message = f'SERVICE_DISCOVERY:{self.role}'.encode()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind((self.local_ip, 0))
@@ -45,18 +52,24 @@ class ServiceDiscovery:
             sock.sendto(message, ('<broadcast>', self.broadcast_port))
             time.sleep(5)
 
+
     def listen_for_broadcast(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(('', self.broadcast_port))
         while True:
             data, addr = sock.recvfrom(1024)
-            if data == b'SERVICE_DISCOVERY' and self.is_valid_ip(addr[0]):
-                if addr[0] not in self.server_addresses:
-                    self.server_addresses.add(addr[0])
-                    print(f"Discovered server: {addr[0]}")
-                if not self.leader_ip:
-                    self.start_election()
+            try:
+                message = data.decode()
+                msg_type, role = message.split(':')
+                if msg_type == 'SERVICE_DISCOVERY' and role == 'server' and self.is_valid_ip(addr[0]):
+                    if addr[0] not in self.server_addresses:
+                        self.server_addresses.add(addr[0])
+                        print(f"Discovered server: {addr[0]}")
+                    if not self.leader_ip:
+                        self.start_election()
+            except Exception as e:
+                print(f"Error decoding broadcast message: {e}")
 
     def start_heartbeat(self):
         if not self.heartbeat_running:
@@ -149,9 +162,9 @@ class ServiceDiscovery:
         return list(self.server_addresses)
 
 # 示例用法：
-if __name__ == '__main__':
-    discovery = ServiceDiscovery()
-    discovery.start()
-    time.sleep(10)  # 等待一些时间以发现服务器
-    print("Discovered servers:", discovery.get_servers())
-    print("Leader:", discovery.get_leader())
+# if __name__ == '__main__':
+#     discovery = ServiceDiscovery(role = 'server')
+#     discovery.start()
+#     time.sleep(10)  # 等待一些时间以发现服务器
+#     print("Discovered servers:", discovery.get_servers())
+#     print("Leader:", discovery.get_leader())

@@ -4,12 +4,14 @@ import time
 from service_discovery import ServiceDiscovery
 
 class ChatClient:
+
     def __init__(self):
-        self.discovery = ServiceDiscovery()
+        self.discovery = ServiceDiscovery(role='client')  # 修改：指定角色为client
         self.server_port = 10000
         self.client_socket = None
         self.leader_ip = None
         self.is_connected = False
+
 
     def connect_to_leader(self):
         while not self.is_connected:
