@@ -40,16 +40,22 @@ class ChatClient:
             except Exception as e:
                 print(f"Send message error: {e}")
                 self.is_connected = False
+            
 
     def receive_messages(self):
         while self.is_connected:
             try:
                 data = self.client_socket.recv(1024).decode()
                 if data:
-                    print(f"Received message: {data}")
+                    self.print_message(data)
             except Exception as e:
                 print(f"Receive message error: {e}")
                 self.is_connected = False
+
+    def print_message(self, message):
+        print(f"\r{' ' * 80}\r", end='', flush=True)
+        print(f"{message}")
+        print("Enter message: ", end='', flush=True)
 
     def handle_leader_change(self):
         while True:

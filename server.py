@@ -39,14 +39,25 @@ class Server:
                 data = client_socket.recv(1024)
                 if not data:
                     break
-                print(f"Received message from {client_address}: {data.decode()}")
+                message = data.decode()
+                print(f"{client_address}: {message}")
                 # 这里可以添加处理消息的逻辑，例如转发给其他客户端
+                self.forward_message(client_address, message)
+
         except Exception as e:
             print(f"Error handling client {client_address}: {e}")
         finally:
             client_socket.close()
             del self.clients[client_address]
             print(f"Client disconnected: {client_address}")
+
+    def forward_message(self, sender_address, message):
+        for client_address, client_socket in self.clients.items():
+            if client_address != sender_address:
+                try:
+                    client_socket.sendall(f"{sender_address}: {message}".encode())
+                except Exception as e:
+                    print(f"Error forwarding message to {client_address}: {e}")
 
 if __name__ == '__main__':
     server = Server(port=10000)
