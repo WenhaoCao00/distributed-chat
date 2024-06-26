@@ -3,17 +3,17 @@ import threading
 import time
 import json
 from service_discovery import ServiceDiscovery
-from lamport_clock import LamportClock
+from vector_clock import VectorClock
 
 class ChatClient:
 
-    def __init__(self):
+    def __init__(self, process_id, num_processes):
         self.discovery = ServiceDiscovery(role='client')  # 修改：指定角色为client
         self.server_port = 10000
         self.client_socket = None
         self.leader_ip = None
         self.is_connected = False
-        self.clock = LamportClock()
+        self.clock = VectorClock(process_id, num_processes)  # 修改：初始化VectorClock
 
     def connect_to_leader(self):
         while not self.is_connected:
@@ -89,5 +89,5 @@ class ChatClient:
         self.send_messages()
 
 if __name__ == '__main__':
-    client = ChatClient()
+    client = ChatClient(process_id=0, num_processes=3)  # 示例：指定进程ID和进程数量
     client.start()

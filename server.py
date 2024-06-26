@@ -3,15 +3,15 @@ import threading
 import time
 import json
 from service_discovery import ServiceDiscovery
-from lamport_clock import LamportClock
+from vector_clock import VectorClock
 
 class Server:
-    def __init__(self, port=10000):
+    def __init__(self, process_id, num_processes, port=10000):
         self.port = port
         self.discovery = ServiceDiscovery(role='server')
         self.clients = {}
         self.server_running = True
-        self.clock = LamportClock()
+        self.clock = VectorClock(process_id, num_processes)  # 修改：初始化VectorClock
         self.message_queue = []
 
     def start(self):
@@ -82,7 +82,7 @@ class Server:
                     print(f"Error forwarding message to {client_address}: {e}")
 
 if __name__ == '__main__':
-    server = Server(port=10000)
+    server = Server(process_id=0, num_processes=3, port=10000)  # 示例：指定进程ID和进程数量
     server.start()
     while True:
         time.sleep(1)
