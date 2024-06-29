@@ -13,7 +13,7 @@ class Server:
         self.server_running = True
         self.clock = LamportClock()
         self.message_queue = []
-        self.client_clocks = {}
+        self.client_clocks = {(address, clock)}
 
     def start(self):
         print("Starting service discovery...")
