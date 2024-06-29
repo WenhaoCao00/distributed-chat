@@ -13,6 +13,7 @@ class Server:
         self.server_running = True
         self.clock = LamportClock()
         self.message_queue = []
+        self.client_clocks = {}
 
     def start(self):
         print("Starting service discovery...")
@@ -38,6 +39,7 @@ class Server:
 
     def handle_client(self, client_socket, client_address):
         self.clients[client_address] = client_socket
+
         try:
             while True:
                 data = client_socket.recv(1024)
@@ -45,12 +47,19 @@ class Server:
                     break
                 message = json.loads(data.decode())
                 self.clock.receive_event(message['timestamp'])
-                print(f"{client_address}: {message['content']}")
+                #first time receive message from client
+                if client_address not in self.client_clocks:
+                    self.client_clocks[client_address] = int(message['timestamp']) -1
+                print(f"{client_address}: {message['content']}:{message['timestamp']}:{self.client_clocks[client_address]}")
                 
                 
-                # Forward message to all other clients
-                self.message_queue.append((client_address, message))
-                self.process_message_queue()
+                if message['timestamp'] == self.client_clocks[client_address] + 1:
+                    self.client_clocks[client_address] = message['timestamp']
+                    self.forward_message(client_address, message)
+                    self.process_message_queue()
+                else:
+                    self.message_queue.append((client_address, message))
+
 
                 
 
@@ -59,13 +68,23 @@ class Server:
         finally:
             client_socket.close()
             del self.clients[client_address]
+            del self.client_clocks[client_address]
             print(f"Client disconnected: {client_address}")
 
 
     def process_message_queue(self):
-        while self.message_queue:
-            sender_address, message = self.message_queue.pop(0)
-            self.forward_message(sender_address, message)
+        self.message_queue.sort(key=lambda x: x[1]['timestamp'])  # 按时间戳排序
+        i = 0
+        while i < len(self.message_queue):
+            sender_address, message = self.message_queue[i]
+            if message['timestamp'] == self.client_clocks[sender_address] + 1:
+                # 更新客户端时钟
+                self.client_clocks[sender_address] = message['timestamp']
+                # 转发消息
+                self.forward_message(sender_address, message)
+                self.message_queue.pop(i)
+            else:
+                i += 1  # 继续检查下一条消息
 
     def forward_message(self, sender_address, message):
         for client_address, client_socket in self.clients.items():
