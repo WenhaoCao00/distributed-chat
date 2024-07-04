@@ -8,7 +8,7 @@ from lamport_clock import LamportClock
 class ChatClient:
 
     def __init__(self):
-        self.discovery = ServiceDiscovery(role='client')  # 修改：指定角色为client
+        self.discovery = ServiceDiscovery(role='client') 
         self.server_port = 10000
         self.client_socket = None
         self.leader_ip = None
