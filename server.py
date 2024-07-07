@@ -27,7 +27,7 @@ class Server:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((self.discovery.local_ip, self.port))
         server_socket.listen(5)
-        print(f"Server started on {self.discovery.local_ip}:{self.port}")
+        print(f"Local server started on {self.discovery.local_ip}:{self.port}")
 
         while self.server_running:
             try:
