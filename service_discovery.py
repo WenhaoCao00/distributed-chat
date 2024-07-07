@@ -146,7 +146,7 @@ class ServiceDiscovery:
 
     def start_election(self):
         print("Starting election...")
-        self.leader_ip = min(self.server_addresses.union({self.local_ip}))
+        self.leader_ip = min(self.server_addresses.union({self.local_ip}), key=lambda ip: tuple(map(int, ip.split('.'))))
         print(f"Elected leader: {self.leader_ip}")
         print(f"Server addresses: {self.server_addresses.union({self.local_ip})}")
         if self.leader_ip == self.local_ip:
