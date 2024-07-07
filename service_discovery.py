@@ -39,6 +39,7 @@ class ServiceDiscovery:
             threading.Thread(target=self.listen_for_broadcast, daemon=True).start()
             threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
             threading.Thread(target=self.check_heartbeat, daemon=True).start()
+            threading.Thread(target=self.initial_heartbeat_check, daemon=True).start()
         elif self.role == 'client':
             threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
 
@@ -143,21 +144,36 @@ class ServiceDiscovery:
                     del self.last_heartbeat[server_ip]
                     self.start_election()
             time.sleep(5)
-
-    def start_election(self):
-        print("Starting election...")
-        self.leader_ip = min(self.server_addresses.union({self.local_ip}), key=lambda ip: tuple(map(int, ip.split('.'))))
-        print(f"Elected leader: {self.leader_ip}")
-        print(f"Server addresses: {self.server_addresses.union({self.local_ip})}")
-        if self.leader_ip == self.local_ip:
+    
+    def initial_heartbeat_check(self):
+        # 等待一个心跳周期以收集其他服务器信息
+        time.sleep(self.heartbeat_interval + 1)
+        if len(self.server_addresses) == 1:
+            print(f"I am the leader: {self.local_ip}")
             self.is_leader = True
             self.start_heartbeat()
-            print(f"I am the leader: {self.local_ip}")
+        elif len(self.server_addresses) > 1:
+            self.start_election()
+
+    def start_election(self):
+        if len(self.server_addresses) == 1 and self.local_ip in self.server_addresses:
+            print(f"Only one server in the network, I am the leader: {self.local_ip}")
+            self.is_leader = True
+            self.start_heartbeat()
         else:
-            self.is_leader = False
-            self.stop_heartbeat()
-            print(f"New leader is {self.leader_ip}")
-        self.notify_new_leader()
+            print("Starting election...")
+            self.leader_ip = min(self.server_addresses.union({self.local_ip}), key=lambda ip: tuple(map(int, ip.split('.'))))
+            print(f"Elected leader: {self.leader_ip}")
+            print(f"Server addresses: {self.server_addresses.union({self.local_ip})}")
+            if self.leader_ip == self.local_ip:
+                self.is_leader = True
+                self.start_heartbeat()
+                print(f"I am the leader: {self.local_ip}")
+            else:
+                self.is_leader = False
+                self.stop_heartbeat()
+                print(f"New leader is {self.leader_ip}")
+            self.notify_new_leader()
 
     def notify_new_leader(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
