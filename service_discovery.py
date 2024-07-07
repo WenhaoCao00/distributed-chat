@@ -95,6 +95,7 @@ class ServiceDiscovery:
             }).encode()
             # 广播心跳消息给整个子网
             sock.sendto(message, ('<broadcast>', self.heartbeat_port))
+            # print(f"Sent heartbeat from {self.local_ip} with leader {self.leader_ip}")
             time.sleep(self.heartbeat_interval)
 
     def listen_for_heartbeats(self):
@@ -150,6 +151,7 @@ class ServiceDiscovery:
         if len(self.server_addresses) == 1:
             print(f"I am the leader: {self.local_ip}")
             self.is_leader = True
+            self.leader_ip = self.local_ip
             self.start_heartbeat()
         elif len(self.server_addresses) > 1:
             self.start_election()
