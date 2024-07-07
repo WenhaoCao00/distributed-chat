@@ -54,7 +54,7 @@ class ServiceDiscovery:
 
     def listen_for_broadcast(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)# 因为reuse
         sock.bind(('', self.broadcast_port))
         while True:
             data, addr = sock.recvfrom(1024)

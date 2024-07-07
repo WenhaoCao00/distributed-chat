@@ -44,6 +44,7 @@ class ChatClient:
                     'content': message_content,
                     'timestamp': timestamp
                 }
+                #更新dic self
                 self.client_socket.sendall(json.dumps(message).encode())
             except Exception as e:
                 print(f"Send message error: {e}")
@@ -58,6 +59,7 @@ class ChatClient:
                     message = json.loads(data)
                     self.clock.receive_event(message['timestamp'])
                     self.print_message(f"{message['sender']}:{message['content']}")
+                    # 更新 dic，合不合理drop or delivery。
                    
             except Exception as e:
                 print(f"Receive message error: {e}")
