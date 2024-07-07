@@ -4,6 +4,7 @@ import time
 import json
 from service_discovery import ServiceDiscovery
 from lamport_clock import LamportClock
+from collections import defaultdict
 
 class ChatClient:
 
@@ -14,6 +15,7 @@ class ChatClient:
         self.leader_ip = None
         self.is_connected = False
         self.clock = LamportClock()
+        self.vector_clock = defaultdict(int)  # Initialize vector clock
 
     def connect_to_leader(self):
         while not self.is_connected:
@@ -39,10 +41,12 @@ class ChatClient:
                     self.is_connected = False
                     break
                 timestamp = self.clock.send_event()
+                self.vector_clock[self.discovery.local_ip] += 1
                 message = {
-                    'sender': 'client_id',
+                    'sender': self.discovery.local_ip,
                     'content': message_content,
-                    'timestamp': timestamp
+                    'timestamp': timestamp,
+                    'vector_clock': self.vector_clock
                 }
                 #更新dic self
                 self.client_socket.sendall(json.dumps(message).encode())
@@ -60,7 +64,10 @@ class ChatClient:
                     self.clock.receive_event(message['timestamp'])
                     self.print_message(f"{message['sender']}:{message['content']}")
                     # 更新 dic，合不合理drop or delivery。
-                   
+                    # Update vector clock with received data
+                    for ip, timestamp in message['vector_clock'].items():
+                        if ip not in self.vector_clock or self.vector_clock[ip] < timestamp:
+                            self.vector_clock[ip] = timestamp
             except Exception as e:
                 print(f"Receive message error: {e}")
                 self.is_connected = False

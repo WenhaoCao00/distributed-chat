@@ -4,6 +4,7 @@ import time
 import json
 from service_discovery import ServiceDiscovery
 from lamport_clock import LamportClock
+from collections import defaultdict
 
 class Server:
     def __init__(self, port=10000):
@@ -13,7 +14,7 @@ class Server:
         self.server_running = True
         self.clock = LamportClock()
         self.message_queue = []
-        self.client_clocks = {}
+        self.client_clocks = defaultdict(lambda: defaultdict(int))  # Initialize client vector clocks
 
     def start(self):
         print("Starting service discovery...")
@@ -60,9 +61,6 @@ class Server:
                 else:
                     self.message_queue.append((client_address, message))
 
-
-                
-
         except Exception as e:
             print(f"Error handling client {client_address}: {e}")
         finally:
@@ -70,7 +68,6 @@ class Server:
             del self.clients[client_address]
             del self.client_clocks[client_address]
             print(f"Client disconnected: {client_address}")
-
 
     def process_message_queue(self):
         self.message_queue.sort(key=lambda x: x[1]['timestamp'])  # 按时间戳排序
