@@ -49,8 +49,7 @@ class Server:
                 # Update the server's vector clock
                 #self.vector_clock[self.discovery.local_ip] += 1
                 # print(f"Server vector clock: {self.vector_clock}")
-                print("111")
-                print(self.message_queue)
+
                 # Update vector clock with received message's clock
                 self.update_vector_clock(message['vector_clock'])
 
