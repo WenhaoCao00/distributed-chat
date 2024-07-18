@@ -47,8 +47,10 @@ class Server:
                 message = json.loads(data.decode())
                 
                 # Update the server's vector clock
-                self.vector_clock[self.discovery.local_ip] += 1
-                print(f"Server vector clock: {self.vector_clock}")
+                #self.vector_clock[self.discovery.local_ip] += 1
+                # print(f"Server vector clock: {self.vector_clock}")
+                print("111")
+                print(self.message_queue)
                 # Update vector clock with received message's clock
                 self.update_vector_clock(message['vector_clock'])
 
@@ -77,8 +79,9 @@ class Server:
     def is_causally_ready(self, received_clock):
         for ip, timestamp in received_clock.items():
             if ip == self.discovery.local_ip:
-                if timestamp != self.vector_clock[ip]:
-                    return False
+                 if timestamp != self.vector_clock[ip]:
+                    return True
+            #         return False
             elif self.vector_clock[ip] < timestamp:
                 return False
         return True
@@ -87,6 +90,7 @@ class Server:
         self.message_queue.sort(key=lambda x: x[1]['vector_clock'])  # 按矢量时钟排序
         i = 0
         while i < len(self.message_queue):
+  
             sender_address, message = self.message_queue[i]
             if self.is_causally_ready(message['vector_clock']):
                 self.process_message(sender_address, message)
