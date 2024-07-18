@@ -2,6 +2,7 @@ import socket
 import threading
 import time
 import json
+from collections import defaultdict
 
 class ServiceDiscovery:
     def __init__(self, role, broadcast_port=50000, heartbeat_port=50001, heartbeat_interval=5, heartbeat_timeout=10):
@@ -16,7 +17,7 @@ class ServiceDiscovery:
         self.is_leader = False
         self.leader_ip = None
         self.heartbeat_running = False  # 控制心跳线程的运行
-        
+        self.vector_clock = defaultdict(int)  # Initialize vector clock
 
     def is_valid_ip(self, ip):
         return ip.startswith("192.168.") and ip != "127.0.0.1"  # 返回局域网IP并排除本地回环地址
@@ -33,12 +34,12 @@ class ServiceDiscovery:
         return ip
 
     def start(self):
-
         if self.role == 'server':
             threading.Thread(target=self.send_broadcast, daemon=True).start()
             threading.Thread(target=self.listen_for_broadcast, daemon=True).start()
             threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
             threading.Thread(target=self.check_heartbeat, daemon=True).start()
+            threading.Thread(target=self.initial_heartbeat_check, daemon=True).start()
         elif self.role == 'client':
             threading.Thread(target=self.listen_for_heartbeats, daemon=True).start()
 
@@ -50,7 +51,6 @@ class ServiceDiscovery:
         while True:
             sock.sendto(message, ('<broadcast>', self.broadcast_port))
             time.sleep(5)
-
 
     def listen_for_broadcast(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -64,12 +64,12 @@ class ServiceDiscovery:
                 if msg_type == 'SERVICE_DISCOVERY' and role == 'server' and self.is_valid_ip(addr[0]):
                     if addr[0] not in self.server_addresses:
                         self.server_addresses.add(addr[0])
+                        self.vector_clock[addr[0]] = 0  # Add new server to vector clock
                         print(f"Discovered server: {addr[0]}")
+                        if self.is_leader:
+                            self.notify_new_server(addr[0])
                     if not self.leader_ip:
                         self.start_election()
-
-                # elif msg_type == 'SERVICE_DISCOVERY' and role == 'client' and self.is_valid_ip(addr[0]):
-                #这里写的是client的逻辑，但是client的逻辑应该在client.py中实现
             except Exception as e:
                 print(f"Error decoding broadcast message: {e}")
 
@@ -90,12 +90,13 @@ class ServiceDiscovery:
             message = json.dumps({
                 'type': 'heartbeat',
                 'ip': self.local_ip,
-                'leader': self.leader_ip
+                'leader': self.leader_ip,
+                'vector_clock': self.vector_clock
             }).encode()
             # 广播心跳消息给整个子网
             sock.sendto(message, ('<broadcast>', self.heartbeat_port))
+            # print(f"Sent heartbeat from {self.local_ip} with leader {self.leader_ip}")
             time.sleep(self.heartbeat_interval)
-
 
     def listen_for_heartbeats(self):
         print("Starting to listen for heartbeats...")
@@ -108,28 +109,26 @@ class ServiceDiscovery:
             if data:
                 try:
                     message = json.loads(data.decode())
-                    #print(f"Received data: {message}")
                     if message['type'] == 'heartbeat':
                         self.last_heartbeat[addr[0]] = time.time()
                         self.leader_ip = message['leader']
-
                         if self.role == 'server':
                             if self.leader_ip != self.local_ip:
                                 self.is_leader = False
                                 self.stop_heartbeat()
-                            #print(f"Received heartbeat from {addr[0]} with leader {self.leader_ip}")
                         elif self.role == 'client':
-                            #print(f"Client received heartbeat from {addr[0]} with leader {self.leader_ip}")
                             self.leader_ip = message['leader']
+                        # Update vector clock with received data
+                        for ip, timestamp in message['vector_clock'].items():
+                            if ip not in self.vector_clock or self.vector_clock[ip] < timestamp:
+                                self.vector_clock[ip] = timestamp
                     elif message['type'] == 'new_leader':
                         self.leader_ip = message['leader']
                         self.is_leader = (self.leader_ip == self.local_ip)
                         if self.role == 'server' and not self.is_leader:
                             self.stop_heartbeat()
-                        #print(f"Received new leader notification: {self.leader_ip}")
                         if self.role == 'client':
                             self.leader_ip = message['leader']
-                            
                 except json.JSONDecodeError:
                     pass
 
@@ -141,21 +140,41 @@ class ServiceDiscovery:
                     print(f"Server {server_ip} is down, initiating election.")
                     self.server_addresses.remove(server_ip)
                     del self.last_heartbeat[server_ip]
+                    if server_ip in self.vector_clock:
+                        del self.vector_clock[server_ip]  # Remove from vector clock
                     self.start_election()
             time.sleep(5)
+    
+    def initial_heartbeat_check(self):
+        # 等待一个心跳周期以收集其他服务器信息
+        time.sleep(self.heartbeat_interval + 1)
+        if len(self.server_addresses) == 1:
+            print(f"I am the leader: {self.local_ip}")
+            self.is_leader = True
+            self.leader_ip = self.local_ip
+            self.start_heartbeat()
+        elif len(self.server_addresses) > 1:
+            self.start_election()
 
     def start_election(self):
-        print("Starting election...")
-        self.leader_ip = min(self.server_addresses.union({self.local_ip}))
-        if self.leader_ip == self.local_ip:
+        if len(self.server_addresses) == 1 and self.local_ip in self.server_addresses:
+            print(f"Only one server in the network, I am the leader: {self.local_ip}")
             self.is_leader = True
             self.start_heartbeat()
-            print(f"I am the leader: {self.local_ip}")
         else:
-            self.is_leader = False
-            self.stop_heartbeat()
-            print(f"New leader is {self.leader_ip}")
-        self.notify_new_leader()
+            print("Starting election...")
+            self.leader_ip = min(self.server_addresses.union({self.local_ip}), key=lambda ip: tuple(map(int, ip.split('.'))))
+            print(f"Elected leader: {self.leader_ip}")
+            print(f"Server addresses: {self.server_addresses.union({self.local_ip})}")
+            if self.leader_ip == self.local_ip:
+                self.is_leader = True
+                self.start_heartbeat()
+                print(f"I am the leader: {self.local_ip}")
+            else:
+                self.is_leader = False
+                self.stop_heartbeat()
+                print(f"New leader is {self.leader_ip}")
+            self.notify_new_leader()
 
     def notify_new_leader(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -168,16 +187,17 @@ class ServiceDiscovery:
                 sock.sendto(message, (server_ip, self.heartbeat_port))
                 print(f"Notified {server_ip} of new leader {self.leader_ip}")
 
+    def notify_new_server(self, new_server_ip):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        message = json.dumps({
+            'type': 'new_server',
+            'vector_clock': self.vector_clock
+        }).encode()
+        sock.sendto(message, (new_server_ip, self.heartbeat_port))
+        print(f"Notified new server {new_server_ip} of current vector clock")
+
     def get_leader(self):
         return self.leader_ip
 
     def get_servers(self):
         return list(self.server_addresses)
-
-# 示例用法：
-# if __name__ == '__main__':
-#     discovery = ServiceDiscovery(role = 'server')
-#     discovery.start()
-#     time.sleep(10)  # 等待一些时间以发现服务器
-#     print("Discovered servers:", discovery.get_servers())
-#     print("Leader:", discovery.get_leader())

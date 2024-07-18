@@ -3,17 +3,17 @@ import threading
 import time
 import json
 from service_discovery import ServiceDiscovery
-from lamport_clock import LamportClock
+from collections import defaultdict
 
 class ChatClient:
 
     def __init__(self):
-        self.discovery = ServiceDiscovery(role='client')  # 修改：指定角色为client
+        self.discovery = ServiceDiscovery(role='client') 
         self.server_port = 10000
         self.client_socket = None
         self.leader_ip = None
         self.is_connected = False
-        self.clock = LamportClock()
+        self.vector_clock = defaultdict(int)  # Initialize client vector clock
 
     def connect_to_leader(self):
         while not self.is_connected:
@@ -38,30 +38,37 @@ class ChatClient:
                 if message_content.lower() == "exit":
                     self.is_connected = False
                     break
-                timestamp = self.clock.send_event()
+                self.vector_clock[self.discovery.local_ip] += 1
                 message = {
-                    'sender': 'client_id',
+                    'sender': self.discovery.local_ip,
                     'content': message_content,
-                    'timestamp': timestamp
+                    'vector_clock': self.vector_clock.copy()
                 }
+                #更新dic self
                 self.client_socket.sendall(json.dumps(message).encode())
             except Exception as e:
                 print(f"Send message error: {e}")
                 self.is_connected = False
             
-
+            
     def receive_messages(self):
         while self.is_connected:
             try:
                 data = self.client_socket.recv(1024).decode()
                 if data:
                     message = json.loads(data)
-                    self.clock.receive_event(message['timestamp'])
+                    self.update_vector_clock(message['vector_clock'])
                     self.print_message(f"{message['sender']}:{message['content']}")
-                   
             except Exception as e:
                 print(f"Receive message error: {e}")
                 self.is_connected = False
+
+    def update_vector_clock(self, received_clock):
+        for ip, timestamp in received_clock.items():
+            if ip in self.vector_clock:
+                self.vector_clock[ip] = max(self.vector_clock[ip], timestamp)
+            else:
+                self.vector_clock[ip] = timestamp
 
     def print_message(self, message):
         print(f"\r{' ' * 80}\r", end='', flush=True)
