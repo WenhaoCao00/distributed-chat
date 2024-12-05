@@ -1,0 +1,17 @@
+1. Server : Zhao, Cao
+2. client ; Ji
+
+删除所有pycache
+demo 1: dynamic discovery
+两个server加入，然后Cao client上线,Jiclient上线
+
+demo2：leader election
+Cao server，三个client
+
+demo3：fault tolrance
+两个client先交流，然后主server挂掉，切换server（选择最小的server ip address），再client聊天
+
+demo4： reliable ordering
+
+
+
